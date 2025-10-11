@@ -116,17 +116,17 @@ def parseLogseqDate [ ] {
   # TODO: the different objects here are nasty
   let str = ($in | removeDays)
   if ($str | split chars | length) == 23 {
-    $str | parse "{year}-{month}-{day} {hour}:{minute}:{second}" | into datetime
+    $str | parse "{year}-{month}-{day} {hour}:{minute}:{second}" | into datetime | each {date to-timezone $env.LSQ_TIMEZONE}
   } else if ($str | split chars | length) == 20 {
-    $str | parse "{year}-{month}-{day} {hour}:{minute}" | into datetime
+    $str | parse "{year}-{month}-{day} {hour}:{minute}" | into datetime | each {date to-timezone $env.LSQ_TIMEZONE}
   } else {
     # Unknown but try anyway
     try {
       let date = ($str | parse "{year}{month}{day}T{hour}{minute}{second}Z")
       if $date != [] {
-        $date | into datetime
+        $date | into datetime | each {date to-timezone $env.LSQ_TIMEZONE}
       } else {
-        $str | date from-human | formatDate
+        $str | date from-human | each {date to-timezone $env.LSQ_TIMEZONE} | formatDate
       }
     } catch {|err|
       print -e $err
@@ -143,7 +143,7 @@ def parseDayDate [ dayTs: any ]: nothing -> datetime {
     ($day | str substring 4..5)
     ($day | str substring 6..7)
   ]
-  $"($date | str join "-") 00:00:00" | date from-human
+  $"($date | str join "-") 00:00:00" | date from-human | each {date to-timezone $env.LSQ_TIMEZONE}
 }
 
 # Attempts to parse any type of integer date
@@ -153,9 +153,9 @@ def parseDateAny [ date: int ]: nothing -> datetime {
   if $date == "UNKNOWN" {
     $date
   } else if $len == 8 {
-    $date | parseDayDate $in
+    $date | parseDayDate $in | date to-timezone $env.LSQ_TIMEZONE
   } else if $len == 13 {
-    $date * 1000000 | into datetime
+    $date * 1000000 | into datetime | date to-timezone $env.LSQ_TIMEZONE
   } else {
     print -e "UNEXPECTED"
     $date
@@ -254,7 +254,7 @@ def logseqToTask [
   task : record
   --eventsInTasks(-t) # include events in tasks
 ]: nothing -> record {
-  let schedule = ($task | get -o schedule | default "")
+  let schedule = ($task | get -o scheduled | default "")
   let deadline = ($task | get -o deadline | default "")
   let textOnly = (parseTaskDescription $task.content | lines)
   let description = ($textOnly | skip | str join "\n" | str trim)
@@ -483,6 +483,7 @@ def parseAndWriteTasks [
     exit 1
   }
 
+  $env.LSQ_TIMEZONE = ($env | get -o LSQ_TIMEZONE | default (date now | format date "%z"))
   $env.LSQ_HTTP_ENDPOINT = ($env | get -o LSQ_HTTP_ENDPOINT | default "localhost:12315/api")
   $env.LSQ_EVENT_DIR = ($env | get -o LSQ_EVENT_DIR | default $env.LSQ_TASK_DIR)
 
