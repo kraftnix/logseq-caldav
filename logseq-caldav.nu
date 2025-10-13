@@ -17,6 +17,7 @@ def diffTexts [
   rm -rf $f2 | ignore
 }
 
+
 # Returns true if the key exists and is not an empty string
 def nullOrStr [ key: string ]: record -> bool {
   ($in | get -o $key | default "") == ""
@@ -91,7 +92,15 @@ def parseTaskDescription [ taskContent: string ] {
 
 # Formats a date into an ics compatible timestamp
 def formatDate [ ]: datetime -> string {
-  format date "%Y%m%dT%H%M%SZ"
+  # format date "%Y%m%dT%H%M%SZ" # UTC
+  # format date "%Y%m%dT%H%M%S%Z" # with timezone like +0100
+  format date "%Y%m%dT%H%M%S" # timezoneless
+}
+
+# Formats a string date with the timezone in $env.LSQ_TIMEZONE_STR
+#  - i.e. 20250101T001122 -> TZID=Europe/Berlin:20250101T001122
+def formatDateTZ [ ]: string -> string {
+  $"TZID=($env.LSQ_TIMEZONE_STR):($in)"
 }
 
 # Formats a date into a Logseq Logbook compatible timestamp
@@ -351,9 +360,9 @@ def logToIcsEventSub [ ]: record<dtstamp: string, start: string, end: string, ui
   let log = $in
   $'
 BEGIN:VEVENT
-DTSTAMP:($log.dtstamp)
-DTSTART:($log.start)
-DTEND:($log.end)
+DTSTAMP;($log.dtstamp | formatDateTZ)
+DTSTART;($log.start | formatDateTZ)
+DTEND;($log.end | formatDateTZ)
 UID:($log.uid)
 SEQUENCE:($log.sequence)
 SUMMARY:($log.summary)
@@ -393,19 +402,19 @@ VERSION:2.0
 PRODID:($caldav.prodid)
 BEGIN:VTODO
 UID:($caldav.uid)
-CREATED:($caldav.created)
-LAST-MODIFIED:($caldav.last-modified)
-DTSTAMP:($caldav.dtstamp)
+CREATED;($caldav.created | formatDateTZ)
+LAST-MODIFIED;($caldav.last-modified | formatDateTZ)
+DTSTAMP;($caldav.dtstamp | formatDateTZ)
 SUMMARY:($caldav.summary)
 '
 (if ($caldav.tags != []) and (not $noTags) { $'CATEGORIES:($caldav.tags | str join ",")' } else { [] })
-(if ($caldav | nullOrStr "schedule") { [] } else { $"DTSTART:($caldav.schedule)" })
-(if ($caldav | nullOrStr "deadline") { [] } else { $"DUE:($caldav.deadline)" })
+(if ($caldav | nullOrStr "schedule") { [] } else { $"DTSTART;($caldav.schedule | formatDateTZ)" })
+(if ($caldav | nullOrStr "deadline") { [] } else { $"DUE;($caldav.deadline | formatDateTZ)" })
 (if ($caldav | nullOrStr "description") { [] } else { $"DESCRIPTION:($caldav.description)" })
 (if ($caldav | nullOrStr "completed") { [] } else {
 $'
 PERCENT-COMPLETE:100
-COMPLETED:($caldav.completed)
+COMPLETED;($caldav.completed | formatDateTZ)
 '
 })
 'END:VTODO'
@@ -483,7 +492,8 @@ def parseAndWriteTasks [
     exit 1
   }
 
-  $env.LSQ_TIMEZONE = ($env | get -o LSQ_TIMEZONE | default (date now | format date "%z"))
+  $env.LSQ_TIMEZONE = ($env | get -o LSQ_TIMEZONE | default (date now | format date "%z")) # like +0100
+  $env.LSQ_TIMEZONE_STR = ($env | get -o LSQ_TIMEZONE_STR | default (timedatectl show -P Timezone | str trim)) # like Europe/Berlin
   $env.LSQ_HTTP_ENDPOINT = ($env | get -o LSQ_HTTP_ENDPOINT | default "localhost:12315/api")
   $env.LSQ_EVENT_DIR = ($env | get -o LSQ_EVENT_DIR | default $env.LSQ_TASK_DIR)
 
