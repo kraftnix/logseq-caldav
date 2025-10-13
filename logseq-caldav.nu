@@ -395,6 +395,8 @@ def taskToIcsTodo [
   --noTags # do not write tags as categories
   --noEvents # do no write events
 ] {
+  let hasSchedule = not ($caldav | nullOrStr "schedule")
+  let hasDeadline = not ($caldav | nullOrStr "deadline")
   [
 $'
 BEGIN:VCALENDAR
@@ -408,8 +410,24 @@ DTSTAMP;($caldav.dtstamp | formatDateTZ)
 SUMMARY:($caldav.summary)
 '
 (if ($caldav.tags != []) and (not $noTags) { $'CATEGORIES:($caldav.tags | str join ",")' } else { [] })
-(if ($caldav | nullOrStr "schedule") { [] } else { $"DTSTART;($caldav.schedule | formatDateTZ)" })
-(if ($caldav | nullOrStr "deadline") { [] } else { $"DUE;($caldav.deadline | formatDateTZ)" })
+( # TODO: refactor / deduplicate
+  # some special handling is required because DUE cannot be before DTSTART...
+  if $hasSchedule and $hasDeadline {
+    if ($caldav.deadline | into datetime) < ($caldav.schedule | into datetime) {
+      # we simply don't bother with due date in this case... maybe better behaviour could be done.
+      $"DTSTART;($caldav.schedule | formatDateTZ)"
+    } else {[
+      $"DTSTART;($caldav.schedule | formatDateTZ)"
+      $"DUE;($caldav.deadline | formatDateTZ)"
+    ]}
+  } else if $hasSchedule {
+    $"DTSTART;($caldav.schedule | formatDateTZ)"
+  } else if $hasDeadline {
+    $"DUE;($caldav.deadline | formatDateTZ)"
+  } else {
+    []
+  }
+)
 (if ($caldav | nullOrStr "description") { [] } else { $"DESCRIPTION:($caldav.description)" })
 (if ($caldav | nullOrStr "completed") { [] } else {
 $'
