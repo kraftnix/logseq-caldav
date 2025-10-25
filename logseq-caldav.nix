@@ -3,6 +3,7 @@
   difftastic,
   vdirsyncer,
   nushell,
+  nushellPlugins,
   writeTextFile
 }:
 let
@@ -14,7 +15,7 @@ writeTextFile {
   destination = "/bin/${name}";
   executable = true;
   text = ''
-    #!${lib.getExe nushell}
+    #!${lib.getExe nushell} -n --plugins ['${lib.getExe nushellPlugins.formats}']
 
     $env.PATH = ($env.PATH | append "${lib.makeBinPath [ difftastic vdirsyncer ]}" | str join ":")
 

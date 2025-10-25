@@ -547,15 +547,22 @@ def parseAndWriteTasks [
         let icsEvent = ($"($env.LSQ_EVENT_DIR)/($log.uid).ics" | path expand)
         let pathExists = ($icsEvent | path exists)
         if $pathExists {
-          let oldIcs = (open $icsEvent | icsToEvent $in)
-          # check if ics are same except modified date
-          if ($oldIcs) == ($log) {
-            log info $"No changes to ics event at ($icsEvent)"
+          let event = open $icsEvent
+          if ($event | describe) !~ "table" {
+            log error $"Failed to read event as ics file ($icsEvent)"
+            log error $event
+            log error "This error can occur when the nushell `formats` plugin is not correctly loaded"
           } else {
-            log info $"Updating existing ics event to ($icsEvent)"
-            # (psub [difft] {echo $oldIcs} {echo $t.task})
-            diffTexts ($oldIcs | to json) ($log | to json)
-            $log | logToIcsEvent $in | save -f $icsEvent
+            let oldIcs = icsToEvent $event
+            # check if ics are same except modified date
+            if ($oldIcs) == ($log) {
+              log info $"No changes to ics event at ($icsEvent)"
+            } else {
+              log info $"Updating existing ics event to ($icsEvent)"
+              # (psub [difft] {echo $oldIcs} {echo $t.task})
+              diffTexts ($oldIcs | to json) ($log | to json)
+              $log | logToIcsEvent $in | save -f $icsEvent
+            }
           }
         } else {
           log info $"Saving new ics event to ($icsEvent)"
@@ -568,15 +575,22 @@ def parseAndWriteTasks [
         task: ($t.task | update logevents {|row| []})
       }
       if $pathExists {
-        let oldIcs = (open $t.icsTask | icsToTask $in --noTags=$noTags)
-        # check if ics are same except modified date
-        if ($oldIcs | reject last-modified) == ($t.task | reject last-modified) {
-          log info $"No changes to ics at ($t.icsTask)"
+        let task = open $t.icsTask
+        if ($task | describe) !~ "table" {
+          log error $"Failed to read event as ics file ($t.icsTask)"
+          log error $task
+          log error "This error can occur when the nushell `formats` plugin is not correctly loaded"
         } else {
-          log info $"Updating existing ics to ($t.icsTask)"
-          # (psub [difft] {echo $oldIcs} {echo $t.task})
-          diffTexts ($oldIcs | to json) ($t.task | to json)
-          $t.task | taskToIcsTodo $in --noTags=$noTags --noEvents=$noEvents | save -f $t.icsTask
+          let oldIcs = icsToTask $task --noTags=$noTags
+          # check if ics are same except modified date
+          if ($oldIcs | reject last-modified) == ($t.task | reject last-modified) {
+            log info $"No changes to ics at ($t.icsTask)"
+          } else {
+            log info $"Updating existing ics to ($t.icsTask)"
+            # (psub [difft] {echo $oldIcs} {echo $t.task})
+            diffTexts ($oldIcs | to json) ($t.task | to json)
+            $t.task | taskToIcsTodo $in --noTags=$noTags --noEvents=$noEvents | save -f $t.icsTask
+          }
         }
       } else {
         log info $"Saving new ics to ($t.icsTask)"
