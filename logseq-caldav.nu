@@ -356,22 +356,33 @@ def logseqToTask [
 }
 
 # Transforms an internal log entry to a VEVENT substring
-def logToIcsEventSub [ ]: record<dtstamp: string, start: string, end: string, uid: string, sequence: int, summary: string> -> string {
+def logToIcsEventSub [ ]: [
+  record<dtstamp: string, start: string, end: string, uid: string, sequence: int, summary: string> -> string
+  record<dtstamp: string, start: string, end: nothing, uid: string, sequence: int, summary: string> -> string
+] {
   let log = $in
+  [
   $'
 BEGIN:VEVENT
 DTSTAMP;($log.dtstamp | formatDateTZ)
 DTSTART;($log.start | formatDateTZ)
-DTEND;($log.end | formatDateTZ)
+  '
+  (if ($log.end | describe) == "string" { $"DTEND;($log.end | formatDateTZ)" } else { [] })
+  $'
 UID:($log.uid)
 SEQUENCE:($log.sequence)
 SUMMARY:($log.summary)
 END:VEVENT
-  ' | str trim
+  ' 
+  ] | flatten | str trim | str join "\n" | str trim
 }
 
 # Transforms an internal log entry to an .ics string with a single VEVENT
-def logToIcsEvent [ log ]: record<dtstamp: string, start: string, end: string, uid: string, sequence: int, summary: string> -> string {
+def logToIcsEvent [ ]: [
+  record<dtstamp: string, start: string, end: string, uid: string, sequence: int, summary: string> -> string
+  record<dtstamp: string, start: string, end: nothing, uid: string, sequence: int, summary: string> -> string
+] {
+  let log = $in
   $'
 BEGIN:VCALENDAR
 VERSION:2.0
@@ -561,12 +572,12 @@ def parseAndWriteTasks [
               log info $"Updating existing ics event to ($icsEvent)"
               # (psub [difft] {echo $oldIcs} {echo $t.task})
               diffTexts ($oldIcs | to json) ($log | to json)
-              $log | logToIcsEvent $in | save -f $icsEvent
+              $log | logToIcsEvent | save -f $icsEvent
             }
           }
         } else {
           log info $"Saving new ics event to ($icsEvent)"
-          $log | logToIcsEvent $in | save $icsEvent
+          $log | logToIcsEvent | save $icsEvent
         }
       }
       # logevents removed for next step
