@@ -521,7 +521,7 @@ def queryHttp [ query: string ]: nothing -> table {
 def parseAndWriteTasks [
   --noTags(-t)        # include tags in tasks
   --eventsInTasks(-e) # include events in tasks
-] {
+]: nothing -> list<string> {
 # Check if ENV is correctly set
   if ($env | get -o LSQ_TASK_DIR) == null {
     print -e "LSQ_TASK_DIR not found in environment, please set it (example: ~/.local/state/calendars/nextcloud/logseq)"
@@ -549,7 +549,9 @@ def parseAndWriteTasks [
   } }
   # TODO: refactor this, lots of repeated code
   | each {|t|
+    mut paths = []
     if $eventsInTasks {
+      # TODO: remove this old behaviour
       let pathExists = ($t.icsTask | path exists)
       if $pathExists {
         let oldIcs = (open $t.icsTask | icsToTask $in --noTags=$noTags)
@@ -565,9 +567,10 @@ def parseAndWriteTasks [
         log info $"Saving new ics to ($t.icsTask)"
         $t.task | taskToIcsTodo $in --noTags=$noTags | save $t.icsTask
       }
+      $paths | append $t.icsTask
     } else {
       let pathExists = ($t.icsTask | path exists)
-      $t.task.logevents | each {|log|
+      let eventPaths = $t.task.logevents | each {|log|
         let icsEvent = ($"($env.LSQ_EVENT_DIR)/($log.uid).ics" | path expand)
         let pathExists = ($icsEvent | path exists)
         if $pathExists {
@@ -597,7 +600,9 @@ def parseAndWriteTasks [
           log info $"Saving new ics event to ($icsEvent)"
           $log | logToIcsEvent | save $icsEvent
         }
+        $icsEvent
       }
+      $paths = ($paths | append $eventPaths)
       # logevents removed for next step
       let $t = {
         icsTask: $t.icsTask
@@ -627,8 +632,9 @@ def parseAndWriteTasks [
         log info $"Saving new ics to ($t.icsTask)"
         $t.task | taskToIcsTodo $in --noTags=$noTags --noEvents=$noEvents | save $t.icsTask
       }
+      $paths | append $t.icsTask
     }
-  }
+  } | flatten
 }
 
 # Queries the Logseq tasks from it's HTTP API and generates a directory of .ics files.
@@ -648,9 +654,21 @@ def main [
   --period(-p) : string # duration of time between repeating this script, takes a string parseable as a nushell duration (example: "1min")
   --noTags(-t)          # include tags in tasks
   --eventsInTasks(-e)   # include events in tasks
+  --keepOrphans         # do not check for and remove orphaned tasks and events
 ] {
   loop {
-    parseAndWriteTasks --noTags=$noTags --eventsInTasks=$eventsInTasks
+    let current = (parseAndWriteTasks --noTags=$noTags --eventsInTasks=$eventsInTasks)
+    if not $keepOrphans {
+      let existing = (ls ($env.LSQ_TASK_DIR | path expand) | append (ls ($env | get -o LSQ_EVENT_DIR | default $env.LSQ_TASK_DIR | path expand)) | flatten | uniq)
+      let orphaned = $existing | where {|e| not ($current | any {|c| $c == $e.name}) }
+      if ($orphaned | length) > 0 {
+        log warning "Deleting orphaned files"
+        $orphaned | each {|f|
+          log info $"Deleting orphaned file: ($f.name)"
+          rm $f.name
+        }
+      }
+    }
     if $sync {
       log info $"Running sync to ($env.LSQ_VDIRSYNCER_CALENDAR)"
       vdirsyncer sync $env.LSQ_VDIRSYNCER_CALENDAR
