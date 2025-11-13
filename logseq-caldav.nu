@@ -48,7 +48,7 @@ def upsertIfExists [
 
 # parses a logbook entry
 def parseLogbook [ ]: string -> table<start: string, end: string, time: string> {
-  lines | str trim | parse "CLOCK: [{start}]--[{end}] => {time}"
+  lines | str trim | parse "CLOCK: [{start}]--[{end}] => {time}" | str trim
 }
 
 # Parses the task content provided by the Logseq HTTP API into a description
@@ -123,7 +123,7 @@ def removeDays [ ]: string -> string {
 # Parses a Logseq Logbook date into a formatted date
 def parseLogseqDate [ ] {
   # TODO: the different objects here are nasty
-  let str = ($in | removeDays)
+  let str = ($in | removeDays | str trim)
   if ($str | split chars | length) == 23 {
     $str | parse "{year}-{month}-{day} {hour}:{minute}:{second}" | into datetime | each {date to-timezone $env.LSQ_TIMEZONE}
   } else if ($str | split chars | length) == 20 {
@@ -392,6 +392,17 @@ END:VCALENDAR
   ' | str trim
 }
 
+# VTODOs require DUE to be > DTSTART
+def eventDeadlineScheduleConflict [ caldav ]: nothing -> bool {
+  (
+    ($caldav.deadline? != null)
+    and
+    ($caldav.schedule? != null)
+    and
+    ($caldav.deadline | into datetime) < ($caldav.schedule | into datetime)
+  )
+}
+
 # Transforms an internal task object and generates an .ics string with a single VTODO
 #
 # DTSTAMP: UTC time that the scheduling message was generated (required by iCal)
@@ -424,7 +435,7 @@ SUMMARY:($caldav.summary)
 ( # TODO: refactor / deduplicate
   # some special handling is required because DUE cannot be before DTSTART...
   if $hasSchedule and $hasDeadline {
-    if ($caldav.deadline | into datetime) < ($caldav.schedule | into datetime) {
+    if (eventDeadlineScheduleConflict $caldav) {
       # we simply don't bother with due date in this case... maybe better behaviour could be done.
       $"DTSTART;($caldav.schedule | formatDateTZ)"
     } else {[
@@ -529,8 +540,10 @@ def parseAndWriteTasks [
   let noEvents = (not $eventsInTasks)
   getLogsFromApi
   | from json
+  # | where {|task| $task.uuid == "69057fc8-7ba4-4fd0-bbf5-9fac6ff479e3"} # useful for debugging
   | par-each {|logseqTask| {
     # ics: (logseqToTask $task | taskToIcsTodo $in)
+    apiTask: $logseqTask
     task: (logseqToTask $logseqTask --eventsInTasks=$eventsInTasks)
     icsTask: ($"($env.LSQ_TASK_DIR | into string)/($logseqTask.uuid).ics" | path expand)
   } }
@@ -541,7 +554,7 @@ def parseAndWriteTasks [
       if $pathExists {
         let oldIcs = (open $t.icsTask | icsToTask $in --noTags=$noTags)
         # check if ics are same except modified date
-        if ($oldIcs | reject last-modified) == ($t.task | reject last-modified) {
+        if ($oldIcs | reject last-modified | reject -o sequence) == ($t.task | reject last-modified | reject -o sequence) {
           log info $"No changes to ics at ($t.icsTask)"
         } else {
           log info $"Updating existing ics to ($t.icsTask)"
@@ -566,13 +579,18 @@ def parseAndWriteTasks [
           } else {
             let oldIcs = icsToEvent $event
             # check if ics are same except modified date
-            if ($oldIcs) == ($log) {
+            if ($oldIcs | reject -o sequence) == ($log | reject -o sequence) {
               log info $"No changes to ics event at ($icsEvent)"
             } else {
               log info $"Updating existing ics event to ($icsEvent)"
               # (psub [difft] {echo $oldIcs} {echo $t.task})
               diffTexts ($oldIcs | to json) ($log | to json)
-              $log | logToIcsEvent | save -f $icsEvent
+              let oldSequence = $oldIcs | get -o sequence | default 0
+              log info $"Incrementing sequnce from ($oldSequence) to ($oldSequence + 1)"
+              $log
+                | update sequence ($oldSequence + 1)
+                | logToIcsEvent
+                | save -f $icsEvent
             }
           }
         } else {
@@ -594,7 +612,9 @@ def parseAndWriteTasks [
         } else {
           let oldIcs = icsToTask $task --noTags=$noTags
           # check if ics are same except modified date
-          if ($oldIcs | reject last-modified) == ($t.task | reject last-modified) {
+          let noChangeBasic = ($oldIcs | reject last-modified | reject -o sequence) == ($t.task | reject last-modified | reject -o sequence)
+          let noChangeDeadlineChecked = (eventDeadlineScheduleConflict $t.task) and ($oldIcs | reject -o last-modified deadline sequence) == ($t.task | reject -o last-modified deadline sequence)
+          if $noChangeBasic or $noChangeDeadlineChecked {
             log info $"No changes to ics at ($t.icsTask)"
           } else {
             log info $"Updating existing ics to ($t.icsTask)"

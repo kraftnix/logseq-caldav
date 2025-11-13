@@ -120,6 +120,7 @@ logseq-caldav --sync --period 30min
 - Using a CalDAV server without support for combined Calendars and Tasks is supported, but you must choose two separate directories
   (and therefore calendars) to sync the ics files to, by default `LSQ_EVENT_DIR` uses the same value as `LSQ_TASK_DIR`,
   this is an assumption that the same CalDAV directory can be used for both tasks (VTODO) and calendar events (VEVENT).
+- VTODO events which have a DUE (deadline) earlier than a DTSTAMP (scheduled) are invalid, so we skip writing the deadline to the event.
 
 
 ## Todo
