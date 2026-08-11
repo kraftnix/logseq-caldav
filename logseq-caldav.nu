@@ -668,7 +668,7 @@ def main [
       let orphaned = $existing | where {|e| not ($current | any {|c| $c == $e.name}) }
       if ($orphaned | length) > 0 {
         log warning "Deleting orphaned files"
-        $orphaned | each {|f|
+        $orphaned | where name =~ .ics | each {|f|
           log info $"Deleting orphaned file: ($f.name)"
           rm $f.name
         }
