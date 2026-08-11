@@ -34,7 +34,49 @@ Go to the Nextcloud Calendar app and create a Calendar with tasks support (`New 
 
 You may want to also want to create a Nextcloud App Password for `vdirsyncer` usage via the WebUI under (Settings -> Security -> Devices & Sessions -> App Name/Password).
 
+### Pimsync
+
+Create a pimsync config at `~/.config/pimsync/pimsync.conf` like:
+
+```
+status_path "~/.local/share/pimsync/status/"
+
+
+pair nextcloud {
+  storage_a nextcloud_local
+  storage_b nextcloud_remote
+  collections all
+	# conflict_resolution cmd nvim -d
+	conflict_resolution keep a
+}
+
+storage nextcloud_remote {
+  type caldav
+  url https://nextcloud.mydomain.com/remote.php/caldav/
+  username myuser
+  password XXXX-XXXX-XXXX
+}
+
+storage nextcloud_local {
+  type vdir/icalendar
+  path ~/.local/state/calendars/nextcloud
+  fileext ics
+}
+
+[storage nextcloud_calendars_remote]
+type = "caldav"
+```
+
+Discover Calendars
+```sh
+pimsync discover nextcloud
+```
+
+This will create the needed directories at `~/.local/state/calendars/nextcloud` (or otherwise specified in your local calendar storage).
+
 ### Vdirsyncer
+
+> Pimsync is the replacement for vdirsyncer and is currently the recommended sync solution.
 
 Create a vdirsyncer config at `~/.config/vdirsyncer/config` like:
 
@@ -92,10 +134,16 @@ logseq-caldav
 nu logseq-caldav.nu
 ```
 
+Optionally run a pimsync sync:
+```sh
+export LSQ_PIMSYNC_CALENDAR = "nextcloud/logseq"
+logseq-caldav --sync
+```
+
 Optionally run a vdirsyncer sync:
 ```sh
 export LSQ_VDIRSYNCER_CALENDAR = "nextcloud_calendars/logseq"
-logseq-caldav --sync
+logseq-caldav --sync --vdirsyncer
 ```
 
 You can make the script run periodically:

@@ -638,7 +638,8 @@ def parseAndWriteTasks [
 }
 
 # Queries the Logseq tasks from it's HTTP API and generates a directory of .ics files.
-#  - Optionally also run vdirsyncer (--sync)
+#  - Optionally also run pimsync (--sync)
+#  - Optionally also run vdirsyncer (--sync --vdirsyncer)
 #  - Optionally run entire script on a periodic basis (--period=1min)
 #
 # Most configuration for this script is done via environment variables:
@@ -646,6 +647,9 @@ def parseAndWriteTasks [
 #  - `LSQ_HTTP_ENDPOINT`: Location of Logseq HTTP API endpoint (default: "localhost:12315/api")
 #  - `LSQ_TASK_DIR`: Directory where tasks will be written (required) (example: "~/.local/state/calendars/nextcloud/logseq")
 #  - `LSQ_EVENT_DIR`: Directory where events will be written (required) (defaults to `LSQ_TASK_DIR`) (example: "~/.local/state/calendars/nextcloud/logseq")
+#  - `LSQ_PIMSYNC_CALENDAR`: `pimsync calendar to sync if sync enabled
+#                             can be a base calendar (nextcloud_calendars) or a specific (nextcloud_calendars/logseq)
+#                             it is recommended to use a specific calendar over a base to not force sync other non-logseq calendars.
 #  - `LSQ_VDIRSYNCER_CALENDAR`: `vdirsyncer` calendar to sync if sync enabled
 #                             can be a base calendar (nextcloud_calendars) or a specific (nextcloud_calendars/logseq)
 #                             it is recommended to use a specific calendar over a base to not force sync other non-logseq calendars.
@@ -655,6 +659,7 @@ def main [
   --noTags(-t)          # include tags in tasks
   --eventsInTasks(-e)   # include events in tasks
   --keepOrphans         # do not check for and remove orphaned tasks and events
+  --vdirsyncer          # use vdirsyncer to sync calendars, defaults to pimsync
 ] {
   loop {
     let current = (parseAndWriteTasks --noTags=$noTags --eventsInTasks=$eventsInTasks)
@@ -670,8 +675,13 @@ def main [
       }
     }
     if $sync {
-      log info $"Running sync to ($env.LSQ_VDIRSYNCER_CALENDAR)"
-      vdirsyncer sync $env.LSQ_VDIRSYNCER_CALENDAR
+      if $vdirsyncer {
+        log info $"Running vdirsyncer sync to ($env.LSQ_VDIRSYNCER_CALENDAR)"
+        vdirsyncer sync $env.LSQ_VDIRSYNCER_CALENDAR
+      } else {
+        log info $"Running pimsync sync to ($env.LSQ_PIMSYNC_CALENDAR)"
+        pimsync sync $env.LSQ_PIMSYNC_CALENDAR
+      }
     }
     if $period == null {
       exit 0
