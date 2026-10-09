@@ -5,5 +5,8 @@
   outputs = { self, nixpkgs, ... }: {
     packages.x86_64-linux.logseq-caldav = nixpkgs.legacyPackages.x86_64-linux.callPackage ./logseq-caldav.nix { };
     packages.x86_64-linux.default = self.packages.x86_64-linux.logseq-caldav;
+    overlays.default = final: prev: {
+      logseq-caldav = self.packages.${final.stdenv.hostPlatform.system}.logseq-caldav;
+    };
   };
 }
