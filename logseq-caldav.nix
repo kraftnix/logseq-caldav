@@ -2,22 +2,23 @@
   lib,
   difftastic,
   vdirsyncer,
+  pimsync,
   nushell,
   nushellPlugins,
   writeTextFile
 }:
 let
   name = "logseq-caldav";
-  version = "0.0.1";
+  version = "1.0.0";
 in
 writeTextFile {
   name = "${name}-${version}";
   destination = "/bin/${name}";
   executable = true;
   text = ''
-    #!${lib.getExe nushell} -n --plugins ['${lib.getExe nushellPlugins.formats}']
+    #!/usr/bin/env -S ${lib.getExe nushell} -n --plugins ['${lib.getExe nushellPlugins.formats}']
 
-    $env.PATH = ($env.PATH | append "${lib.makeBinPath [ difftastic vdirsyncer ]}" | str join ":")
+    $env.PATH = ($env.PATH | append "${lib.makeBinPath [ difftastic vdirsyncer pimsync ]}" | str join ":")
 
     ${(builtins.readFile ./logseq-caldav.nu)}
   '';
